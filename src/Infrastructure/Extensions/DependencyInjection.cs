@@ -32,12 +32,7 @@ public static class DependencyInjection
             {
                 var options = provider.GetRequiredService<IOptions<ChutesAiOptions>>().Value;
                 client.BaseAddress = new Uri(options.BaseUrl);
-                var apiToken = options.ApiToken;
-
-                if (string.IsNullOrWhiteSpace(apiToken))
-                {
-                    apiToken = Environment.GetEnvironmentVariable(EnvironmentVariableNames.ChutesApiKey);
-                }
+                var apiToken = ResolveApiToken(options);
 
                 if (!string.IsNullOrWhiteSpace(apiToken))
                 {
@@ -51,5 +46,22 @@ public static class DependencyInjection
         services.AddSingleton<IAIClient, ChutesAiClient>();
 
         return services;
+    }
+
+    private static string? ResolveApiToken(ChutesAiOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ApiToken))
+        {
+            return options.ApiToken;
+        }
+
+        static string? ReadEnvironmentVariable(EnvironmentVariableTarget target)
+        {
+            return Environment.GetEnvironmentVariable(EnvironmentVariableNames.ChutesApiKey, target);
+        }
+
+        return ReadEnvironmentVariable(EnvironmentVariableTarget.Process)
+            ?? ReadEnvironmentVariable(EnvironmentVariableTarget.User)
+            ?? ReadEnvironmentVariable(EnvironmentVariableTarget.Machine);
     }
 }
