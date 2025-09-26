@@ -1,0 +1,498 @@
+tools:
+  - name: semgrep
+    display_name: Semgrep SAST
+    type: security
+    description: Escáner SAST rápido para múltiples lenguajes y frameworks.
+    enabled: true
+    priority: 10
+    tasks: [security, analysis]
+    languages: [csharp, python, javascript, typescript, java, go]
+    file_extensions: [cs, py, js, ts, java, go]
+    intent_keywords: [semgrep, vulnerabilidad, security, sast, escaneo, audit]
+    execution:
+      mode: cli
+      command: semgrep
+      arguments:
+        - "--config"
+        - "auto"
+        - "--json"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: gitleaks
+    display_name: Gitleaks Secret Scanner
+    type: security
+    description: Detecta secretos y credenciales comprometidas en repositorios Git.
+    enabled: true
+    priority: 20
+    tasks: [secret-scanning, security]
+    languages: []
+    file_extensions: []
+    intent_keywords: [gitleaks, secretos, credenciales, secret, leak]
+    execution:
+      mode: cli
+      command: gitleaks
+      arguments:
+        - "detect"
+        - "--no-banner"
+        - "--redact"
+        - "--report-format"
+        - "json"
+        - "--source"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: trivy_fs
+    display_name: Trivy Filesystem Scan
+    type: security
+    description: Análisis de vulnerabilidades y dependencias con Trivy sobre el sistema de archivos.
+    enabled: true
+    priority: 30
+    tasks: [security, dependency]
+    languages: []
+    file_extensions: []
+    intent_keywords: [trivy, scan, dependencias, vulnerabilidad, sast]
+    execution:
+      mode: cli
+      command: trivy
+      arguments:
+        - "fs"
+        - "--severity"
+        - "HIGH,CRITICAL"
+        - "--format"
+        - "json"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: dotnet_format
+    display_name: dotnet-format
+    type: lint
+    description: Alinea el estilo de código y corrige problemas de formato en soluciones .NET.
+    enabled: true
+    priority: 5
+    tasks: [lint, formatting]
+    languages: [csharp]
+    file_extensions: [cs, csproj, sln]
+    intent_keywords: [format, formatea, lint, estilo, dotnet-format]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "format"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: dotnet_test
+    display_name: dotnet test runner
+    type: testing
+    description: Ejecuta la suite de pruebas de un proyecto o solución .NET.
+    enabled: true
+    priority: 15
+    tasks: [testing]
+    languages: [csharp]
+    file_extensions: [csproj, sln]
+    intent_keywords: [test, pruebas, cobertura, dotnet test]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "test"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: docfx_metadata
+    display_name: DocFX Metadata
+    type: documentation
+    description: Genera metadatos de documentación para proyectos .NET con DocFX.
+    enabled: true
+    priority: 40
+    tasks: [documentation]
+    languages: [csharp]
+    file_extensions: [json, csproj, sln]
+    intent_keywords: [docfx, documentación, docs]
+    execution:
+      mode: cli
+      command: docfx
+      arguments:
+        - "metadata"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: dotnet_list_packages
+    display_name: dotnet list package --outdated
+    type: dependency
+    description: Identifica paquetes NuGet desactualizados dentro de un proyecto o solución.
+    enabled: true
+    priority: 25
+    tasks: [dependency]
+    languages: [csharp]
+    file_extensions: [csproj, sln]
+    intent_keywords: [dependencias, outdated, paquetes, actualiza]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "list"
+        - "{target}"
+        - "package"
+        - "--outdated"
+    metadata:
+      result_format: text
+  - name: yq_cli
+    display_name: yq YAML/JSON processor
+    type: conversion
+    description: Convierte archivos YAML y JSON utilizando la utilidad yq.
+    enabled: true
+    priority: 35
+    tasks: [conversion]
+    languages: []
+    file_extensions: [yml, yaml, json]
+    intent_keywords: [yq, convierte, conversion, json, yaml]
+    execution:
+      mode: cli
+      command: yq
+      arguments:
+        - "eval"
+        - "-o=json"
+        - "."
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: yaml_json_builtin
+    display_name: Conversor YAML ↔ JSON
+    type: conversion
+    description: Conversión integrada entre YAML y JSON sin depender de herramientas externas.
+    enabled: true
+    priority: 1
+    tasks: [conversion]
+    languages: []
+    file_extensions: [yaml, yml, json]
+    intent_keywords: [convertir, yaml, json, transforma, formato]
+    forward_result_to_agent: false
+    execution:
+      mode: builtin
+      handler: yaml-json
+    metadata:
+      direction: yaml-to-json
+  - name: json_yaml_builtin
+    display_name: Conversor JSON → YAML
+    type: conversion
+    description: Conversión integrada de JSON hacia YAML utilizando el motor interno.
+    enabled: true
+    priority: 2
+    tasks: [conversion]
+    languages: []
+    file_extensions: [json, yaml, yml]
+    intent_keywords: [convertir, yaml, json, transforma, formato]
+    forward_result_to_agent: false
+    execution:
+      mode: builtin
+      handler: yaml-json
+    metadata:
+      direction: json-to-yaml
+  - name: eslint
+    display_name: ESLint
+    type: lint
+    description: Analizador estático y linter para proyectos JavaScript y TypeScript.
+    enabled: true
+    priority: 12
+    tasks: [lint, analysis]
+    languages: [javascript, typescript]
+    file_extensions: [js, jsx, ts, tsx]
+    intent_keywords: [eslint, lint, estilo, javascript, typescript]
+    execution:
+      mode: cli
+      command: npx
+      arguments:
+        - eslint
+        - "{target}"
+        - "--format"
+        - json
+    metadata:
+      result_format: json
+  - name: prettier
+    display_name: Prettier Formatter
+    type: formatting
+    description: Formateador de código para proyectos JavaScript, TypeScript y frontend.
+    enabled: true
+    priority: 18
+    tasks: [formatting]
+    languages: [javascript, typescript, css, json, markdown]
+    file_extensions: [js, jsx, ts, tsx, css, scss, json, md]
+    intent_keywords: [prettier, formatea, format, frontend]
+    execution:
+      mode: cli
+      command: npx
+      arguments:
+        - prettier
+        - "{target}"
+        - "--write"
+    metadata:
+      result_format: text
+  - name: flake8
+    display_name: Flake8 Linter
+    type: lint
+    description: Linter para código Python que combina PyFlakes, pycodestyle y McCabe.
+    enabled: true
+    priority: 14
+    tasks: [lint, analysis]
+    languages: [python]
+    file_extensions: [py]
+    intent_keywords: [flake8, lint, pep8, estilo, python]
+    execution:
+      mode: cli
+      command: flake8
+      arguments:
+        - "{target}"
+        - "--format=json"
+    metadata:
+      result_format: json
+  - name: black
+    display_name: Black Formatter
+    type: formatting
+    description: Formateador opinado para proyectos Python.
+    enabled: true
+    priority: 22
+    tasks: [formatting]
+    languages: [python]
+    file_extensions: [py]
+    intent_keywords: [black, formatea, format, python]
+    execution:
+      mode: cli
+      command: black
+      arguments:
+        - "{target}"
+        - "--quiet"
+    metadata:
+      result_format: text
+  - name: bandit
+    display_name: Bandit Security Scanner
+    type: security
+    description: Analiza código Python para detectar vulnerabilidades comunes.
+    enabled: true
+    priority: 28
+    tasks: [security, analysis]
+    languages: [python]
+    file_extensions: [py]
+    intent_keywords: [bandit, security, vulnerabilidad, python]
+    execution:
+      mode: cli
+      command: bandit
+      arguments:
+        - "-r"
+        - "{target}"
+        - "-f"
+        - json
+    metadata:
+      result_format: json
+  - name: pip_audit
+    display_name: pip-audit Dependency Scanner
+    type: dependency
+    description: Detecta vulnerabilidades en dependencias Python utilizando el ecosistema PyPI.
+    enabled: true
+    priority: 32
+    tasks: [dependency, security]
+    languages: [python]
+    file_extensions: [pyproject.toml, requirements.txt]
+    intent_keywords: [pip-audit, dependencias, seguridad, python]
+    execution:
+      mode: cli
+      command: pip-audit
+      arguments:
+        - "--progress-spinner"
+        - "off"
+        - "--format"
+        - json
+        - "--requirement"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: npm_audit
+    display_name: npm audit
+    type: dependency
+    description: Auditoría de dependencias npm para detectar vulnerabilidades conocidas.
+    enabled: true
+    priority: 34
+    tasks: [dependency, security]
+    languages: [javascript, typescript]
+    file_extensions: [json]
+    intent_keywords: [npm audit, dependencias, seguridad, javascript]
+    execution:
+      mode: cli
+      command: npm
+      arguments:
+        - audit
+        - "--json"
+        - "--prefix"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: ktlint
+    display_name: ktlint
+    type: lint
+    description: Linter para proyectos Kotlin compatible con Gradle y Maven.
+    enabled: true
+    priority: 16
+    tasks: [lint, formatting]
+    languages: [kotlin]
+    file_extensions: [kt, kts]
+    intent_keywords: [ktlint, kotlin, lint, format]
+    execution:
+      mode: cli
+      command: ktlint
+      arguments:
+        - "{target}"
+        - "--reporter=json"
+    metadata:
+      result_format: json
+  - name: gradle_test
+    display_name: Gradle Test Runner
+    type: testing
+    description: Ejecuta pruebas automatizadas en proyectos JVM mediante Gradle.
+    enabled: true
+    priority: 26
+    tasks: [testing]
+    languages: [kotlin, java]
+    file_extensions: [gradle, kts]
+    intent_keywords: [gradle, test, junit, ejecutar pruebas]
+    execution:
+      mode: cli
+      command: ./gradlew
+      arguments:
+        - test
+    metadata:
+      result_format: text
+  - name: pytest
+    display_name: pytest
+    type: testing
+    description: Ejecuta pruebas unitarias Python con Pytest.
+    enabled: true
+    priority: 24
+    tasks: [testing]
+    languages: [python]
+    file_extensions: [py]
+    intent_keywords: [pytest, test, pruebas, python]
+    execution:
+      mode: cli
+      command: pytest
+      arguments:
+        - "{target}"
+        - "-q"
+        - "--maxfail=1"
+        - "--disable-warnings"
+        - "--json-report"
+    metadata:
+      result_format: json
+  - name: markdownlint
+    display_name: Markdownlint CLI
+    type: lint
+    description: Analiza archivos Markdown para garantizar consistencia y buenas prácticas.
+    enabled: true
+    priority: 36
+    tasks: [lint]
+    languages: [markdown]
+    file_extensions: [md, markdown]
+    intent_keywords: [markdownlint, lint, markdown]
+    execution:
+      mode: cli
+      command: npx
+      arguments:
+        - markdownlint-cli2
+        - "{target}"
+        - "--output-format"
+        - json
+    metadata:
+      result_format: json
+  - name: yamllint
+    display_name: yamllint
+    type: lint
+    description: Validador y linter para archivos YAML con soporte para esquemas.
+    enabled: true
+    priority: 38
+    tasks: [lint, validation]
+    languages: [yaml]
+    file_extensions: [yaml, yml]
+    intent_keywords: [yamllint, lint, yaml, validar]
+    execution:
+      mode: cli
+      command: yamllint
+      arguments:
+        - "-f"
+        - parsable
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: shellcheck
+    display_name: ShellCheck
+    type: lint
+    description: Linter para scripts shell que detecta errores y malas prácticas.
+    enabled: true
+    priority: 42
+    tasks: [lint, analysis]
+    languages: [shell]
+    file_extensions: [sh, bash]
+    intent_keywords: [shellcheck, bash, shell, lint]
+    execution:
+      mode: cli
+      command: shellcheck
+      arguments:
+        - "{target}"
+        - "--format"
+        - json
+    metadata:
+      result_format: json
+  - name: hadolint
+    display_name: Hadolint
+    type: lint
+    description: Analiza Dockerfiles para detectar problemas de seguridad y estilo.
+    enabled: true
+    priority: 44
+    tasks: [lint, security]
+    languages: [docker]
+    file_extensions: [Dockerfile]
+    intent_keywords: [hadolint, docker, lint, seguridad]
+    execution:
+      mode: cli
+      command: hadolint
+      arguments:
+        - "{target}"
+        - "-f"
+        - json
+    metadata:
+      result_format: json
+  - name: terraform_fmt
+    display_name: Terraform fmt
+    type: formatting
+    description: Normaliza el formato de archivos Terraform.
+    enabled: true
+    priority: 46
+    tasks: [formatting]
+    languages: [hcl]
+    file_extensions: [tf]
+    intent_keywords: [terraform, fmt, formatea, infraestructura]
+    execution:
+      mode: cli
+      command: terraform
+      arguments:
+        - fmt
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: terraform_validate
+    display_name: Terraform validate
+    type: validation
+    description: Valida configuraciones Terraform asegurando integridad sintáctica.
+    enabled: true
+    priority: 48
+    tasks: [validation]
+    languages: [hcl]
+    file_extensions: [tf]
+    intent_keywords: [terraform, validate, validar, infraestructura]
+    execution:
+      mode: cli
+      command: terraform
+      arguments:
+        - validate
+        - "{target}"
+    metadata:
+      result_format: text
