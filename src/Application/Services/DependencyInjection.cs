@@ -2,6 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using RapidCli.Application.Agents;
 using RapidCli.Application.Conversation;
 using RapidCli.Application.Sessions;
+using RapidCli.Application.Tools;
+using RapidCli.Application.Tools.Providers;
+using RapidCli.Domain.Interfaces;
 
 namespace RapidCli.Application.Services;
 
@@ -22,6 +25,11 @@ public static class DependencyInjection
         services.AddSingleton<ConfigurationService>();
         services.AddSingleton<ChatService>();
         services.AddSingleton<AgentService>();
+        services.AddSingleton<McpIntentClassifier>();
+        services.AddSingleton<McpToolRegistry>();
+        services.AddSingleton<ToolOrchestrator>();
+        services.AddSingleton<IAgentToolProvider, CliToolProvider>();
+        services.AddSingleton<IAgentToolProvider, YamlJsonToolProvider>();
         return services;
     }
 }
