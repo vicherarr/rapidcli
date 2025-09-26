@@ -7,6 +7,7 @@ using RapidCli.Application.Agents;
 using RapidCli.Application.Configurations;
 using RapidCli.Application.Services;
 using RapidCli.Application.Sessions;
+using RapidCli.Application.Tools;
 using RapidCli.Domain.Models;
 using Spectre.Console;
 
@@ -28,12 +29,15 @@ public sealed class CliRunner
         "/sessions",
         "/help",
         "/agent",
+        "/tools",
+        "/mcp",
     ];
 
     private readonly ChatService _chatService;
     private readonly ConfigurationService _configurationService;
     private readonly SessionStorageService _sessionStorage;
     private readonly AgentService _agentService;
+    private readonly ToolOrchestrator _toolOrchestrator;
     private readonly ILogger<CliRunner> _logger;
 
     /// <summary>
@@ -44,12 +48,14 @@ public sealed class CliRunner
         ConfigurationService configurationService,
         SessionStorageService sessionStorage,
         AgentService agentService,
+        ToolOrchestrator toolOrchestrator,
         ILogger<CliRunner> logger)
     {
         _chatService = chatService;
         _configurationService = configurationService;
         _sessionStorage = sessionStorage;
         _agentService = agentService;
+        _toolOrchestrator = toolOrchestrator;
         _logger = logger;
     }
 
@@ -60,6 +66,7 @@ public sealed class CliRunner
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         await _configurationService.ReloadAsync().ConfigureAwait(false);
+        await _toolOrchestrator.InitializeAsync(cancellationToken).ConfigureAwait(false);
         RenderWelcome();
 
         while (!cancellationToken.IsCancellationRequested)
@@ -134,6 +141,10 @@ public sealed class CliRunner
             case "/agent":
                 await HandleAgentAsync(arguments, cancellationToken).ConfigureAwait(false);
                 return false;
+            case "/tools":
+            case "/mcp":
+                RenderToolRegistry();
+                return false;
             default:
                 AnsiConsole.MarkupLine("[red]Comando desconocido.[/]");
                 return false;
@@ -169,6 +180,18 @@ public sealed class CliRunner
             Content = userMessage,
         });
 
+        var orchestration = await _toolOrchestrator.TryOrchestrateAsync(userMessage, cancellationToken).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(orchestration.Message))
+        {
+            AnsiConsole.MarkupLine($"[italic]{Markup.Escape(orchestration.Message)}[/]");
+        }
+
+        if (orchestration.ToolExecuted)
+        {
+            RenderOrchestratedTool(orchestration);
+        }
+
         if (!_configurationService.Current.Agent.Enabled)
         {
             const string disabledMessage = "El agente está deshabilitado en la configuración actual.";
@@ -183,6 +206,26 @@ public sealed class CliRunner
             return;
         }
 
+        if (orchestration.BypassAgent)
+        {
+            var response = orchestration.ResponseText ?? string.Empty;
+            var panel = new Panel(Markup.Escape(response))
+            {
+                Header = new PanelHeader(orchestration.Descriptor?.DisplayName ?? "Resultado", Justify.Center),
+                Border = BoxBorder.Rounded,
+            };
+            AnsiConsole.Write(panel);
+
+            history.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = response,
+            });
+            _chatService.LoadHistory(history);
+            return;
+        }
+
+        var agentObjective = orchestration.AgentObjective;
         AgentExecutionResult? result = null;
 
         await AnsiConsole.Status()
@@ -190,7 +233,7 @@ public sealed class CliRunner
             .StartAsync("[cyan]Ejecutando agente...[/]", async ctx =>
             {
                 ctx.Status("Solicitando al modelo...");
-                result = await _agentService.ExecuteTaskAsync(userMessage, cancellationToken).ConfigureAwait(false);
+                result = await _agentService.ExecuteTaskAsync(agentObjective, cancellationToken).ConfigureAwait(false);
             });
 
         if (result is null)
@@ -216,6 +259,74 @@ public sealed class CliRunner
         });
 
         _chatService.LoadHistory(history);
+    }
+
+    private void RenderOrchestratedTool(ToolOrchestrationResult orchestration)
+    {
+        if (orchestration.Descriptor is null || orchestration.ExecutionResult is null)
+        {
+            return;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded).Title("Ejecución de herramientas MCP");
+        table.AddColumn("Herramienta");
+        table.AddColumn("Estado");
+        table.AddColumn("Duración");
+        table.AddColumn("Salida");
+
+        var status = orchestration.ExecutionResult.Success ? "[green]OK[/]" : "[red]Error[/]";
+        var preview = orchestration.ExecutionResult.Output;
+        if (!string.IsNullOrWhiteSpace(preview) && preview.Length > 200)
+        {
+            preview = preview[..200] + "…";
+        }
+
+        table.AddRow(
+            Markup.Escape(orchestration.Descriptor.DisplayName),
+            status,
+            orchestration.ExecutionResult.Duration.ToString("g"),
+            string.IsNullOrWhiteSpace(preview) ? "[grey]<sin salida>[/]" : Markup.Escape(preview));
+
+        AnsiConsole.Write(table);
+    }
+
+    private void RenderToolRegistry()
+    {
+        var tools = _toolOrchestrator.GetRegisteredTools();
+        if (tools.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No hay herramientas MCP configuradas.[/]");
+            return;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded).Title("Herramientas MCP disponibles");
+        table.AddColumn("Nombre");
+        table.AddColumn("Tipo");
+        table.AddColumn("Tareas");
+        table.AddColumn("Lenguajes");
+        table.AddColumn("Estado");
+
+        foreach (var descriptor in tools)
+        {
+            var tasks = descriptor.Configuration.Tasks.Count > 0
+                ? string.Join(", ", descriptor.Configuration.Tasks)
+                : "-";
+            var languages = descriptor.Configuration.Languages.Count > 0
+                ? string.Join(", ", descriptor.Configuration.Languages)
+                : "-";
+            var status = descriptor.Availability.IsAvailable
+                ? "[green]Disponible[/]"
+                : $"[red]{Markup.Escape(descriptor.Availability.Detail ?? "No disponible")}[/]";
+
+            table.AddRow(
+                Markup.Escape(descriptor.DisplayName),
+                Markup.Escape(descriptor.Configuration.Type ?? "-"),
+                Markup.Escape(tasks),
+                Markup.Escape(languages),
+                status);
+        }
+
+        AnsiConsole.Write(table);
     }
 
     private void RenderHistory()
@@ -252,6 +363,7 @@ public sealed class CliRunner
         table.AddRow("/save <nombre>", "Guardar la sesión actual");
         table.AddRow("/load <nombre>", "Cargar una sesión guardada");
         table.AddRow("/sessions", "Listar sesiones disponibles");
+        table.AddRow("/tools", "Mostrar herramientas MCP configuradas");
 
         table.AddEmptyRow();
         table.AddRow(

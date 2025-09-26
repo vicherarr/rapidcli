@@ -1,0 +1,192 @@
+tools:
+  - name: semgrep
+    display_name: Semgrep SAST
+    type: security
+    description: Escáner SAST rápido para múltiples lenguajes y frameworks.
+    enabled: true
+    priority: 10
+    tasks: [security, analysis]
+    languages: [csharp, python, javascript, typescript, java, go]
+    file_extensions: [cs, py, js, ts, java, go]
+    intent_keywords: [semgrep, vulnerabilidad, security, sast, escaneo, audit]
+    execution:
+      mode: cli
+      command: semgrep
+      arguments:
+        - "--config"
+        - "auto"
+        - "--json"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: gitleaks
+    display_name: Gitleaks Secret Scanner
+    type: security
+    description: Detecta secretos y credenciales comprometidas en repositorios Git.
+    enabled: true
+    priority: 20
+    tasks: [secret-scanning, security]
+    languages: []
+    file_extensions: []
+    intent_keywords: [gitleaks, secretos, credenciales, secret, leak]
+    execution:
+      mode: cli
+      command: gitleaks
+      arguments:
+        - "detect"
+        - "--no-banner"
+        - "--redact"
+        - "--report-format"
+        - "json"
+        - "--source"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: trivy_fs
+    display_name: Trivy Filesystem Scan
+    type: security
+    description: Análisis de vulnerabilidades y dependencias con Trivy sobre el sistema de archivos.
+    enabled: true
+    priority: 30
+    tasks: [security, dependency]
+    languages: []
+    file_extensions: []
+    intent_keywords: [trivy, scan, dependencias, vulnerabilidad, sast]
+    execution:
+      mode: cli
+      command: trivy
+      arguments:
+        - "fs"
+        - "--severity"
+        - "HIGH,CRITICAL"
+        - "--format"
+        - "json"
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: dotnet_format
+    display_name: dotnet-format
+    type: lint
+    description: Alinea el estilo de código y corrige problemas de formato en soluciones .NET.
+    enabled: true
+    priority: 5
+    tasks: [lint, formatting]
+    languages: [csharp]
+    file_extensions: [cs, csproj, sln]
+    intent_keywords: [format, formatea, lint, estilo, dotnet-format]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "format"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: dotnet_test
+    display_name: dotnet test runner
+    type: testing
+    description: Ejecuta la suite de pruebas de un proyecto o solución .NET.
+    enabled: true
+    priority: 15
+    tasks: [testing]
+    languages: [csharp]
+    file_extensions: [csproj, sln]
+    intent_keywords: [test, pruebas, cobertura, dotnet test]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "test"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: docfx_metadata
+    display_name: DocFX Metadata
+    type: documentation
+    description: Genera metadatos de documentación para proyectos .NET con DocFX.
+    enabled: true
+    priority: 40
+    tasks: [documentation]
+    languages: [csharp]
+    file_extensions: [json, csproj, sln]
+    intent_keywords: [docfx, documentación, docs]
+    execution:
+      mode: cli
+      command: docfx
+      arguments:
+        - "metadata"
+        - "{target}"
+    metadata:
+      result_format: text
+  - name: dotnet_list_packages
+    display_name: dotnet list package --outdated
+    type: dependency
+    description: Identifica paquetes NuGet desactualizados dentro de un proyecto o solución.
+    enabled: true
+    priority: 25
+    tasks: [dependency]
+    languages: [csharp]
+    file_extensions: [csproj, sln]
+    intent_keywords: [dependencias, outdated, paquetes, actualiza]
+    execution:
+      mode: cli
+      command: dotnet
+      arguments:
+        - "list"
+        - "{target}"
+        - "package"
+        - "--outdated"
+    metadata:
+      result_format: text
+  - name: yq_cli
+    display_name: yq YAML/JSON processor
+    type: conversion
+    description: Convierte archivos YAML y JSON utilizando la utilidad yq.
+    enabled: true
+    priority: 35
+    tasks: [conversion]
+    languages: []
+    file_extensions: [yml, yaml, json]
+    intent_keywords: [yq, convierte, conversion, json, yaml]
+    execution:
+      mode: cli
+      command: yq
+      arguments:
+        - "eval"
+        - "-o=json"
+        - "."
+        - "{target}"
+    metadata:
+      result_format: json
+  - name: yaml_json_builtin
+    display_name: Conversor YAML ↔ JSON
+    type: conversion
+    description: Conversión integrada entre YAML y JSON sin depender de herramientas externas.
+    enabled: true
+    priority: 1
+    tasks: [conversion]
+    languages: []
+    file_extensions: [yaml, yml, json]
+    intent_keywords: [convertir, yaml, json, transforma, formato]
+    forward_result_to_agent: false
+    execution:
+      mode: builtin
+      handler: yaml-json
+    metadata:
+      direction: yaml-to-json
+  - name: json_yaml_builtin
+    display_name: Conversor JSON → YAML
+    type: conversion
+    description: Conversión integrada de JSON hacia YAML utilizando el motor interno.
+    enabled: true
+    priority: 2
+    tasks: [conversion]
+    languages: []
+    file_extensions: [json, yaml, yml]
+    intent_keywords: [convertir, yaml, json, transforma, formato]
+    forward_result_to_agent: false
+    execution:
+      mode: builtin
+      handler: yaml-json
+    metadata:
+      direction: json-to-yaml

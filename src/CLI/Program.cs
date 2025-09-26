@@ -51,6 +51,7 @@ rootCommand.SetHandler(async (InvocationContext context) =>
     });
 
     builder.Services.Configure<ChatConfiguration>(builder.Configuration.GetSection("Chat"));
+    builder.Services.Configure<ToolingConfiguration>(builder.Configuration.GetSection("Tools"));
     builder.Services.AddApplicationServices();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddSingleton<CliRunner>();
