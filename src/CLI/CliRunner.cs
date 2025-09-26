@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -67,7 +68,9 @@ public sealed class CliRunner
     {
         await _configurationService.ReloadAsync().ConfigureAwait(false);
         await _toolOrchestrator.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await _chatService.InitializeSessionAsync(cancellationToken).ConfigureAwait(false);
         RenderWelcome();
+        RenderSessionInfo();
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -117,8 +120,9 @@ public sealed class CliRunner
                 AnsiConsole.MarkupLine("[bold yellow]Hasta pronto![/]");
                 return true;
             case "/reset":
-                _chatService.Reset();
-                AnsiConsole.MarkupLine("[green]Contexto limpiado.[/]");
+                await _chatService.ResetAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                AnsiConsole.MarkupLine("[green]Contexto limpiado y nueva sesión creada.[/]");
+                RenderSessionInfo();
                 return false;
             case "/history":
                 RenderHistory();
@@ -130,10 +134,10 @@ public sealed class CliRunner
                 await HandleConfigAsync(arguments).ConfigureAwait(false);
                 return false;
             case "/save":
-                await HandleSaveAsync(arguments).ConfigureAwait(false);
+                await HandleSaveAsync(arguments, cancellationToken).ConfigureAwait(false);
                 return false;
             case "/load":
-                await HandleLoadAsync(arguments).ConfigureAwait(false);
+                await HandleLoadAsync(arguments, cancellationToken).ConfigureAwait(false);
                 return false;
             case "/sessions":
                 RenderSessions();
@@ -170,25 +174,35 @@ public sealed class CliRunner
 
     private async Task RenderAssistantResponseAsync(string userMessage, CancellationToken cancellationToken)
     {
-        AnsiConsole.MarkupLine($"[bold green]You[/]: {Markup.Escape(userMessage)}");
-        AnsiConsole.Markup("[bold yellow]Assistant[/]: ");
+        await _chatService.AddUserMessageAsync(userMessage, cancellationToken).ConfigureAwait(false);
 
-        var history = _chatService.GetHistory().ToList();
-        history.Add(new ChatMessage
-        {
-            Role = "user",
-            Content = userMessage,
-        });
+        AnsiConsole.MarkupLine($"[bold green]You[/]: {Markup.Escape(userMessage)}");
+        AnsiConsole.MarkupLine("[bold yellow]Assistant[/]:");
+
+        await RenderThinkingAsync("Analizando si es necesario invocar herramientas MCP antes de responder...", cancellationToken).ConfigureAwait(false);
 
         var orchestration = await _toolOrchestrator.TryOrchestrateAsync(userMessage, cancellationToken).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(orchestration.Message))
         {
             AnsiConsole.MarkupLine($"[italic]{Markup.Escape(orchestration.Message)}[/]");
+            await _chatService.RecordThoughtAsync(orchestration.Message!, cancellationToken).ConfigureAwait(false);
         }
 
         if (orchestration.ToolExecuted)
         {
+            if (orchestration.Descriptor is not null)
+            {
+                _chatService.RegisterToolUsage(orchestration.Descriptor.DisplayName);
+            }
+
+            if (orchestration.ExecutionResult is not null)
+            {
+                await RenderThinkingAsync(
+                    $"Se procesó la herramienta '{orchestration.Descriptor?.DisplayName ?? "desconocida"}'. Evaluando la información obtenida...",
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             RenderOrchestratedTool(orchestration);
         }
 
@@ -196,13 +210,7 @@ public sealed class CliRunner
         {
             const string disabledMessage = "El agente está deshabilitado en la configuración actual.";
             AnsiConsole.MarkupLine($"[yellow]{disabledMessage} Usa /config set agent.enabled true para activarlo.[/]");
-
-            history.Add(new ChatMessage
-            {
-                Role = "assistant",
-                Content = disabledMessage,
-            });
-            _chatService.LoadHistory(history);
+            await _chatService.AddAssistantMessageAsync(disabledMessage, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -216,14 +224,11 @@ public sealed class CliRunner
             };
             AnsiConsole.Write(panel);
 
-            history.Add(new ChatMessage
-            {
-                Role = "assistant",
-                Content = response,
-            });
-            _chatService.LoadHistory(history);
+            await _chatService.AddAssistantMessageAsync(response, cancellationToken).ConfigureAwait(false);
             return;
         }
+
+        await RenderThinkingAsync("Preparando el objetivo para el agente autónomo y planificando los próximos pasos...", cancellationToken).ConfigureAwait(false);
 
         var agentObjective = orchestration.AgentObjective;
         AgentExecutionResult? result = null;
@@ -240,25 +245,24 @@ public sealed class CliRunner
         {
             const string noResultMessage = "El agente no devolvió ningún resultado.";
             AnsiConsole.MarkupLine($"[red]{noResultMessage}[/]");
-
-            history.Add(new ChatMessage
-            {
-                Role = "assistant",
-                Content = noResultMessage,
-            });
-            _chatService.LoadHistory(history);
+            await _chatService.AddAssistantMessageAsync(noResultMessage, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         RenderAgentResult(result);
+        _chatService.RegisterAgentToolInvocations(result.ToolInvocations);
+        await _chatService.AddAssistantMessageAsync(result.FinalResponse, cancellationToken).ConfigureAwait(false);
+    }
 
-        history.Add(new ChatMessage
+    private async Task RenderThinkingAsync(string message, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(message))
         {
-            Role = "assistant",
-            Content = result.FinalResponse,
-        });
+            return;
+        }
 
-        _chatService.LoadHistory(history);
+        AnsiConsole.MarkupLine($"[grey italic]{Markup.Escape(message)}[/]");
+        await _chatService.RecordThoughtAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
     private void RenderOrchestratedTool(ToolOrchestrationResult orchestration)
@@ -357,11 +361,11 @@ public sealed class CliRunner
         table.AddColumn("Descripción");
 
         table.AddRow("/exit", "Cerrar la aplicación");
-        table.AddRow("/reset", "Limpiar el contexto actual");
+        table.AddRow("/reset", "Limpiar el contexto actual y crear una nueva sesión");
         table.AddRow("/history", "Mostrar el historial de mensajes");
         table.AddRow("/config", "Ver o actualizar parámetros");
-        table.AddRow("/save <nombre>", "Guardar la sesión actual");
-        table.AddRow("/load <nombre>", "Cargar una sesión guardada");
+        table.AddRow("/save <id>", "Crear un snapshot de la sesión actual");
+        table.AddRow("/load <id>", "Cargar una sesión guardada");
         table.AddRow("/sessions", "Listar sesiones disponibles");
         table.AddRow("/tools", "Mostrar herramientas MCP configuradas");
 
@@ -406,6 +410,7 @@ public sealed class CliRunner
         }
 
         RenderAgentResult(result);
+        _chatService.RegisterAgentToolInvocations(result.ToolInvocations);
     }
 
     private static void RenderAgentResult(AgentExecutionResult result)
@@ -581,7 +586,7 @@ public sealed class CliRunner
         AnsiConsole.Write(table);
     }
 
-    private async Task HandleSaveAsync(IReadOnlyList<string> arguments)
+    private async Task HandleSaveAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         if (arguments.Count == 0)
         {
@@ -590,11 +595,11 @@ public sealed class CliRunner
         }
 
         var sessionName = arguments[0];
-        await _sessionStorage.SaveAsync(sessionName, _chatService.GetHistory()).ConfigureAwait(false);
-        AnsiConsole.MarkupLine($"[green]Sesión '{Markup.Escape(sessionName)}' guardada correctamente.[/]");
+        var normalized = await _chatService.SaveSnapshotAsync(sessionName, cancellationToken).ConfigureAwait(false);
+        AnsiConsole.MarkupLine($"[green]Snapshot creado como '{Markup.Escape(normalized)}'.[/]");
     }
 
-    private async Task HandleLoadAsync(IReadOnlyList<string> arguments)
+    private async Task HandleLoadAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         if (arguments.Count == 0)
         {
@@ -603,15 +608,15 @@ public sealed class CliRunner
         }
 
         var sessionName = arguments[0];
-        var messages = await _sessionStorage.LoadAsync(sessionName).ConfigureAwait(false);
-        if (messages.Count == 0)
+        var loaded = await _chatService.LoadSessionAsync(sessionName, cancellationToken).ConfigureAwait(false);
+        if (!loaded)
         {
-            AnsiConsole.MarkupLine("[yellow]La sesión no contiene mensajes o no existe.[/]");
+            AnsiConsole.MarkupLine("[yellow]La sesión no existe o no pudo cargarse.[/]");
             return;
         }
 
-        _chatService.LoadHistory(messages);
         AnsiConsole.MarkupLine($"[green]Sesión '{Markup.Escape(sessionName)}' cargada.[/]");
+        RenderSessionInfo();
     }
 
     private void RenderSessions()
@@ -624,13 +629,34 @@ public sealed class CliRunner
         }
 
         var table = new Table().Border(TableBorder.Rounded).Title("Sesiones disponibles");
-        table.AddColumn("Nombre");
+        table.AddColumn("ID");
+        table.AddColumn("Creada");
+        table.AddColumn("Actualizada");
+        table.AddColumn("Mensajes");
+        table.AddColumn("Herramientas");
         foreach (var session in sessions)
         {
-            table.AddRow(Markup.Escape(session));
+            table.AddRow(
+                Markup.Escape(session.Id),
+                session.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
+                session.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
+                session.MessageCount.ToString(CultureInfo.InvariantCulture),
+                session.ToolCount.ToString(CultureInfo.InvariantCulture));
         }
 
         AnsiConsole.Write(table);
+    }
+
+    private void RenderSessionInfo()
+    {
+        var session = _chatService.CurrentSession;
+        var created = session.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        var updated = session.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        var messageCount = session.Messages.Count;
+        var toolCount = session.ToolsUsed.Count;
+
+        AnsiConsole.MarkupLine(
+            $"[grey]Sesión activa: {Markup.Escape(session.Id)} — creada {created}, última actualización {updated}. Mensajes: {messageCount}, herramientas: {toolCount}[/]");
     }
 
     private static void RenderWelcome()
