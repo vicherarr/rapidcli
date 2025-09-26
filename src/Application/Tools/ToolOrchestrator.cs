@@ -96,10 +96,21 @@ public sealed class ToolOrchestrator
             ["objective"] = objective,
         };
 
-        var resolvedTarget = ResolveTargetPath(request.TargetPath);
+        var requestedTarget = request.TargetPath;
+        if (string.IsNullOrWhiteSpace(requestedTarget)
+            && contextParameters.TryGetValue("target", out var existingTarget))
+        {
+            requestedTarget = existingTarget;
+        }
+
+        var resolvedTarget = ResolveTargetPath(requestedTarget);
         if (!string.IsNullOrWhiteSpace(resolvedTarget))
         {
             contextParameters["target"] = resolvedTarget;
+        }
+        else if (!contextParameters.ContainsKey("target"))
+        {
+            contextParameters["target"] = Directory.GetCurrentDirectory();
         }
 
         var context = new McpToolInvocationContext(

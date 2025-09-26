@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -12,6 +13,9 @@ public sealed class McpIntentClassifier
 {
     private static readonly Regex FilePattern = new(@"(?<path>[^\s]+\.(cs|fs|vb|py|rb|js|ts|tsx|jsx|java|kt|kts|go|rs|php|json|ya?ml|md|xml|gradle|sln|csproj))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LanguagePattern = new(@"\b(c#|csharp|dotnet|f#|javascript|typescript|python|java|kotlin|go|rust|php|ruby|kotlin)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly char[] PathTokenSeparators = { ' ', '\n', '\r', '\t' };
+    private static readonly char[] PathSurroundingPunctuation = { '"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>' };
+    private static readonly char[] PathTrailingPunctuation = { ',', ';', ':', '!', '?' };
 
     private static readonly (string Task, string[] Keywords)[] TaskMappings =
     [
@@ -76,7 +80,92 @@ public sealed class McpIntentClassifier
     private static string? ExtractPath(string objective)
     {
         var match = FilePattern.Match(objective);
-        return match.Success ? match.Groups["path"].Value : null;
+        if (match.Success)
+        {
+            return match.Groups["path"].Value;
+        }
+
+        foreach (var candidate in EnumeratePathCandidates(objective))
+        {
+            if (LooksLikePath(candidate))
+            {
+                return candidate;
+            }
+
+            if (ExistsRelativePath(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumeratePathCandidates(string objective)
+    {
+        var tokens = objective.Split(PathTokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            var trimmed = token
+                .Trim(PathSurroundingPunctuation)
+                .TrimEnd(PathTrailingPunctuation);
+
+            if (!string.IsNullOrWhiteSpace(trimmed) && !trimmed.All(c => c == '.'))
+            {
+                trimmed = trimmed.TrimEnd('.');
+            }
+
+            if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                yield return trimmed;
+            }
+        }
+    }
+
+    private static bool LooksLikePath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (value.Contains("://", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (value is "." or "..")
+        {
+            return true;
+        }
+
+        if (value.StartsWith("./", StringComparison.Ordinal)
+            || value.StartsWith("../", StringComparison.Ordinal)
+            || value.StartsWith(".\\", StringComparison.Ordinal)
+            || value.StartsWith("..\\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (value.Contains('/') || value.Contains('\\'))
+        {
+            return true;
+        }
+
+        return value.Length >= 2 && value[1] == ':' && char.IsLetter(value[0]);
+    }
+
+    private static bool ExistsRelativePath(string candidate)
+    {
+        try
+        {
+            var combined = Path.Combine(Directory.GetCurrentDirectory(), candidate);
+            return File.Exists(combined) || Directory.Exists(combined);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string? ExtractLanguage(string normalizedObjective, string? path)
