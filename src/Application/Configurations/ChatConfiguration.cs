@@ -48,4 +48,10 @@ public sealed class ChatConfiguration
     /// </summary>
     [JsonPropertyName("stream")]
     public bool Stream { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the nested configuration that drives the agentic capabilities.
+    /// </summary>
+    [JsonPropertyName("agent")]
+    public AgentConfiguration Agent { get; set; } = new();
 }

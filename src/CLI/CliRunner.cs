@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using RapidCli.Application.Agents;
 using RapidCli.Application.Configurations;
 using RapidCli.Application.Services;
 using RapidCli.Application.Sessions;
@@ -26,11 +27,13 @@ public sealed class CliRunner
         "/load",
         "/sessions",
         "/help",
+        "/agent",
     ];
 
     private readonly ChatService _chatService;
     private readonly ConfigurationService _configurationService;
     private readonly SessionStorageService _sessionStorage;
+    private readonly AgentService _agentService;
     private readonly ILogger<CliRunner> _logger;
 
     /// <summary>
@@ -40,11 +43,13 @@ public sealed class CliRunner
         ChatService chatService,
         ConfigurationService configurationService,
         SessionStorageService sessionStorage,
+        AgentService agentService,
         ILogger<CliRunner> logger)
     {
         _chatService = chatService;
         _configurationService = configurationService;
         _sessionStorage = sessionStorage;
+        _agentService = agentService;
         _logger = logger;
     }
 
@@ -125,6 +130,9 @@ public sealed class CliRunner
                 return false;
             case "/sessions":
                 RenderSessions();
+                return false;
+            case "/agent":
+                await HandleAgentAsync(arguments, cancellationToken).ConfigureAwait(false);
                 return false;
             default:
                 AnsiConsole.MarkupLine("[red]Comando desconocido.[/]");
@@ -218,9 +226,81 @@ public sealed class CliRunner
         table.AddRow("/save <nombre>", "Guardar la sesión actual");
         table.AddRow("/load <nombre>", "Cargar una sesión guardada");
         table.AddRow("/sessions", "Listar sesiones disponibles");
+        table.AddRow("/agent <tarea>", "Ejecutar al agente con acceso al código");
 
         AnsiConsole.MarkupLine("[bold cyan]Comandos disponibles:[/]");
         AnsiConsole.Write(table);
+    }
+
+    private async Task HandleAgentAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        if (!_configurationService.Current.Agent.Enabled)
+        {
+            AnsiConsole.MarkupLine("[yellow]El agente está deshabilitado en la configuración actual.[/]");
+            return;
+        }
+
+        if (arguments.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]Debes indicar una tarea para el agente.[/]");
+            return;
+        }
+
+        var objective = string.Join(' ', arguments);
+        AgentExecutionResult? result = null;
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("[cyan]Ejecutando agente...[/]", async ctx =>
+            {
+                ctx.Status("Solicitando al modelo...");
+                result = await _agentService.ExecuteTaskAsync(objective, cancellationToken).ConfigureAwait(false);
+            });
+
+        if (result is null)
+        {
+            AnsiConsole.MarkupLine("[red]El agente no devolvió ningún resultado.[/]");
+            return;
+        }
+
+        RenderAgentResult(result);
+    }
+
+    private static void RenderAgentResult(AgentExecutionResult result)
+    {
+        if (result.ToolInvocations.Count > 0)
+        {
+            var table = new Table().Border(TableBorder.Rounded).Title("Ejecución de herramientas");
+            table.AddColumn("Herramienta");
+            table.AddColumn("Estado");
+            table.AddColumn("Salida (previa)");
+
+            foreach (var invocation in result.ToolInvocations)
+            {
+                var status = invocation.IsError ? "[red]Error[/]" : "[green]OK[/]";
+                var preview = invocation.Output.Length > 240
+                    ? invocation.Output[..240] + "…"
+                    : invocation.Output;
+                table.AddRow(
+                    Markup.Escape(invocation.ToolName),
+                    status,
+                    Markup.Escape(preview));
+            }
+
+            AnsiConsole.Write(table);
+        }
+
+        var statusText = result.Completed ? "completado" : "incompleto";
+        var statusColor = result.Completed ? "green" : "red";
+        AnsiConsole.MarkupLine($"[bold yellow]Agent[/] [{statusColor}]{statusText}[/]");
+
+        var responsePanel = new Panel(Markup.Escape(result.FinalResponse))
+        {
+            Header = new PanelHeader("Respuesta final", Justify.Center),
+            Border = BoxBorder.Rounded,
+        };
+
+        AnsiConsole.Write(responsePanel);
     }
 
     private async Task HandleConfigAsync(IReadOnlyList<string> arguments)
@@ -289,6 +369,33 @@ public sealed class CliRunner
                         }
 
                         break;
+                    case "agent.model":
+                        config.Agent.Model = string.IsNullOrWhiteSpace(value) ? null : value;
+                        break;
+                    case "agent.enabled":
+                        if (bool.TryParse(value, out var agentEnabled))
+                        {
+                            config.Agent.Enabled = agentEnabled;
+                        }
+
+                        break;
+                    case "agent.max_iterations":
+                        if (int.TryParse(value, out var iterations) && iterations > 0)
+                        {
+                            config.Agent.MaxIterations = iterations;
+                        }
+
+                        break;
+                    case "agent.allow_file_writes":
+                        if (bool.TryParse(value, out var allowWrites))
+                        {
+                            config.Agent.AllowFileWrites = allowWrites;
+                        }
+
+                        break;
+                    case "agent.working_directory":
+                        config.Agent.WorkingDirectory = string.IsNullOrWhiteSpace(value) ? null : value;
+                        break;
                 }
             }).ConfigureAwait(false);
 
@@ -318,6 +425,15 @@ public sealed class CliRunner
         table.AddRow("FrequencyPenalty", configuration.FrequencyPenalty.ToString("0.###"));
         table.AddRow("PresencePenalty", configuration.PresencePenalty.ToString("0.###"));
         table.AddRow("Stream", configuration.Stream.ToString());
+        table.AddRow("Agent.Enabled", configuration.Agent.Enabled.ToString());
+        table.AddRow("Agent.Model", configuration.Agent.Model ?? "(hereda Chat.Model)");
+        table.AddRow("Agent.MaxIterations", configuration.Agent.MaxIterations.ToString());
+        table.AddRow("Agent.AllowFileWrites", configuration.Agent.AllowFileWrites.ToString());
+        table.AddRow(
+            "Agent.WorkingDirectory",
+            string.IsNullOrWhiteSpace(configuration.Agent.WorkingDirectory)
+                ? "."
+                : configuration.Agent.WorkingDirectory);
 
         AnsiConsole.MarkupLine("[bold cyan]Configuración actual:[/]");
         AnsiConsole.Write(table);

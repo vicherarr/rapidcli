@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace RapidCli.Domain.Models;
@@ -66,5 +67,12 @@ public sealed class ChatCompletionRequest
     /// </summary>
     [JsonPropertyName("response_format")]
     public ResponseFormat? ResponseFormat { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the optional tool definitions that the assistant can leverage when responding.
+    /// </summary>
+    [JsonPropertyName("tools")]
+    public IList<ToolDefinition>? Tools { get; set; }
         = null;
 }

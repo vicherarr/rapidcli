@@ -41,8 +41,13 @@ rootCommand.SetHandler(async (InvocationContext context) =>
 
     builder.Services.AddLogging(logging =>
     {
-        logging.AddConsole();
-        logging.SetMinimumLevel(LogLevel.Information);
+        logging.ClearProviders();
+        logging.AddSimpleConsole(options =>
+        {
+            options.SingleLine = true;
+            options.TimestampFormat = "HH:mm:ss ";
+        });
+        logging.SetMinimumLevel(LogLevel.Warning);
     });
 
     builder.Services.Configure<ChatConfiguration>(builder.Configuration.GetSection("Chat"));

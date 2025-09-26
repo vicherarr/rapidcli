@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using RapidCli.Application.Agents;
 using RapidCli.Application.Conversation;
 using RapidCli.Application.Sessions;
 
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.AddSingleton<SessionStorageService>();
         services.AddSingleton<ConfigurationService>();
         services.AddSingleton<ChatService>();
+        services.AddSingleton<AgentService>();
         return services;
     }
 }

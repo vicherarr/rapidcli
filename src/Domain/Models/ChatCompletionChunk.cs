@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace RapidCli.Domain.Models;
@@ -31,5 +32,66 @@ public sealed class ChatCompletionChunkChoice
     /// </summary>
     [JsonPropertyName("finish_reason")]
     public string? FinishReason { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the incremental tool call payload emitted while streaming.
+    /// </summary>
+    [JsonPropertyName("tool_calls")]
+    public IList<ChatToolCallDelta>? ToolCalls { get; set; }
+        = null;
+}
+
+/// <summary>
+/// Represents the delta information for a streaming tool call payload.
+/// </summary>
+public sealed class ChatToolCallDelta
+{
+    /// <summary>
+    /// Gets or sets the index of the tool call in the response.
+    /// </summary>
+    [JsonPropertyName("index")]
+    public int? Index { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the identifier for the tool call.
+    /// </summary>
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the type associated with the delta payload.
+    /// </summary>
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the function details of the tool call delta.
+    /// </summary>
+    [JsonPropertyName("function")]
+    public ChatToolCallFunctionDelta? Function { get; set; }
+        = null;
+}
+
+/// <summary>
+/// Represents the function specific delta for a streaming tool call.
+/// </summary>
+public sealed class ChatToolCallFunctionDelta
+{
+    /// <summary>
+    /// Gets or sets the function name provided during streaming.
+    /// </summary>
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+        = null;
+
+    /// <summary>
+    /// Gets or sets the partial arguments payload for the tool call.
+    /// </summary>
+    [JsonPropertyName("arguments")]
+    public string? Arguments { get; set; }
         = null;
 }
