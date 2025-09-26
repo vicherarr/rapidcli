@@ -19,6 +19,8 @@ namespace RapidCli.Application.Tools;
 /// </summary>
 public sealed class McpToolRegistry
 {
+    private const string DefaultRegistryFile = "agent.tools.yaml";
+
     private readonly IEnumerable<IAgentToolProvider> _providers;
     private readonly ToolingConfiguration _configuration;
     private readonly ILogger<McpToolRegistry> _logger;
@@ -192,7 +194,7 @@ public sealed class McpToolRegistry
         var candidate = _configuration.ConfigurationPath;
         if (string.IsNullOrWhiteSpace(candidate))
         {
-            candidate = "agent.tools.yaml";
+            candidate = DefaultRegistryFile;
         }
 
         if (Path.IsPathRooted(candidate))
@@ -200,7 +202,43 @@ public sealed class McpToolRegistry
             return candidate;
         }
 
-        var basePath = Directory.GetCurrentDirectory();
-        return Path.GetFullPath(Path.Combine(basePath, candidate));
+        var baseDirectories = new List<string?>
+        {
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+        };
+
+        foreach (var directory in EnumerateCandidateDirectories(baseDirectories))
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(directory, candidate));
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+        }
+
+        var fallback = baseDirectories.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path))
+                       ?? Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(fallback, candidate));
+    }
+
+    private static IEnumerable<string> EnumerateCandidateDirectories(IEnumerable<string?> baseDirectories)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var baseDirectory in baseDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+            {
+                continue;
+            }
+
+            var current = new DirectoryInfo(baseDirectory);
+            while (current is not null && visited.Add(current.FullName))
+            {
+                yield return current.FullName;
+                current = current.Parent;
+            }
+        }
     }
 }
