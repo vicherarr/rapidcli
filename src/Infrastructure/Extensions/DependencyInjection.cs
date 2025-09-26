@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RapidCli.Domain.Interfaces;
 using RapidCli.Infrastructure.Clients;
+using RapidCli.Infrastructure.Constants;
 using RapidCli.Infrastructure.Options;
 using Refit;
 
@@ -31,9 +32,11 @@ public static class DependencyInjection
             {
                 var options = provider.GetRequiredService<IOptions<ChutesAiOptions>>().Value;
                 client.BaseAddress = new Uri(options.BaseUrl);
-                if (!string.IsNullOrWhiteSpace(options.ApiToken))
+                var apiToken = ResolveApiToken(options);
+
+                if (!string.IsNullOrWhiteSpace(apiToken))
                 {
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
                 }
                 client.DefaultRequestHeaders.Accept.Clear();
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -43,5 +46,22 @@ public static class DependencyInjection
         services.AddSingleton<IAIClient, ChutesAiClient>();
 
         return services;
+    }
+
+    private static string? ResolveApiToken(ChutesAiOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ApiToken))
+        {
+            return options.ApiToken;
+        }
+
+        static string? ReadEnvironmentVariable(EnvironmentVariableTarget target)
+        {
+            return Environment.GetEnvironmentVariable(EnvironmentVariableNames.ChutesApiKey, target);
+        }
+
+        return ReadEnvironmentVariable(EnvironmentVariableTarget.Process)
+            ?? ReadEnvironmentVariable(EnvironmentVariableTarget.User)
+            ?? ReadEnvironmentVariable(EnvironmentVariableTarget.Machine);
     }
 }
