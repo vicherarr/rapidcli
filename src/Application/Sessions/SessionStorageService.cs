@@ -232,7 +232,10 @@ public sealed class SessionStorageService
     }
 
     private static string GenerateSessionId()
-        => $"session-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N[..6]}";
+    {
+        var guidSegment = Guid.NewGuid().ToString("N")[..6];
+        return $"session-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{guidSegment}";
+    }
 
     private static string SanitizeSessionId(string sessionId)
     {
