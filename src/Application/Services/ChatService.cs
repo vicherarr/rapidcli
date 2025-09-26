@@ -455,7 +455,7 @@ public sealed class ChatService
     {
         if (string.IsNullOrWhiteSpace(invocation.Arguments))
         {
-            yield break;
+            return Array.Empty<string>();
         }
 
         try
@@ -463,22 +463,34 @@ public sealed class ChatService
             using var document = JsonDocument.Parse(invocation.Arguments);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
-                yield break;
+                return Array.Empty<string>();
             }
+
+            var paths = new List<string>();
 
             if (document.RootElement.TryGetProperty("path", out var pathElement) && pathElement.ValueKind == JsonValueKind.String)
             {
-                yield return pathElement.GetString()!;
+                var value = pathElement.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    paths.Add(value);
+                }
             }
 
             if (document.RootElement.TryGetProperty("target", out var targetElement) && targetElement.ValueKind == JsonValueKind.String)
             {
-                yield return targetElement.GetString()!;
+                var value = targetElement.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    paths.Add(value);
+                }
             }
+
+            return paths;
         }
         catch
         {
-            yield break;
+            return Array.Empty<string>();
         }
     }
 
