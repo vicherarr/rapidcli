@@ -162,34 +162,60 @@ public sealed class CliRunner
         AnsiConsole.MarkupLine($"[bold green]You[/]: {Markup.Escape(userMessage)}");
         AnsiConsole.Markup("[bold yellow]Assistant[/]: ");
 
-        try
+        var history = _chatService.GetHistory().ToList();
+        history.Add(new ChatMessage
         {
-            var builder = new StringBuilder();
-            await foreach (var fragment in _chatService.GetAssistantResponseAsync(userMessage, null, cancellationToken).ConfigureAwait(false))
-            {
-                if (string.IsNullOrEmpty(fragment))
-                {
-                    continue;
-                }
+            Role = "user",
+            Content = userMessage,
+        });
 
-                builder.Append(fragment);
-                AnsiConsole.Markup(Markup.Escape(fragment));
-            }
+        if (!_configurationService.Current.Agent.Enabled)
+        {
+            const string disabledMessage = "El agente está deshabilitado en la configuración actual.";
+            AnsiConsole.MarkupLine($"[yellow]{disabledMessage} Usa /config set agent.enabled true para activarlo.[/]");
 
-            if (builder.Length == 0)
+            history.Add(new ChatMessage
             {
-                AnsiConsole.Markup("[grey]No se recibió respuesta.[/]");
-            }
+                Role = "assistant",
+                Content = disabledMessage,
+            });
+            _chatService.LoadHistory(history);
+            return;
         }
-        catch (Exception ex)
+
+        AgentExecutionResult? result = null;
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("[cyan]Ejecutando agente...[/]", async ctx =>
+            {
+                ctx.Status("Solicitando al modelo...");
+                result = await _agentService.ExecuteTaskAsync(userMessage, cancellationToken).ConfigureAwait(false);
+            });
+
+        if (result is null)
         {
-            _logger.LogError(ex, "Error while obtaining assistant response");
-            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+            const string noResultMessage = "El agente no devolvió ningún resultado.";
+            AnsiConsole.MarkupLine($"[red]{noResultMessage}[/]");
+
+            history.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = noResultMessage,
+            });
+            _chatService.LoadHistory(history);
+            return;
         }
-        finally
+
+        RenderAgentResult(result);
+
+        history.Add(new ChatMessage
         {
-            AnsiConsole.WriteLine();
-        }
+            Role = "assistant",
+            Content = result.FinalResponse,
+        });
+
+        _chatService.LoadHistory(history);
     }
 
     private void RenderHistory()
@@ -226,7 +252,11 @@ public sealed class CliRunner
         table.AddRow("/save <nombre>", "Guardar la sesión actual");
         table.AddRow("/load <nombre>", "Cargar una sesión guardada");
         table.AddRow("/sessions", "Listar sesiones disponibles");
-        table.AddRow("/agent <tarea>", "Ejecutar al agente con acceso al código");
+
+        table.AddEmptyRow();
+        table.AddRow(
+            "(texto libre)",
+            "Cualquier mensaje que escribas se ejecutará como objetivo del agente.");
 
         AnsiConsole.MarkupLine("[bold cyan]Comandos disponibles:[/]");
         AnsiConsole.Write(table);
@@ -498,6 +528,6 @@ public sealed class CliRunner
             Justification = Justify.Center,
         };
         AnsiConsole.Write(rule);
-        AnsiConsole.MarkupLine("[grey]Escribe tu mensaje o usa [u]/help[/] para ver comandos disponibles.[/]");
+        AnsiConsole.MarkupLine("[grey]Describe la tarea y el agente actuará sobre el repositorio actual. Usa [u]/help[/] para ver comandos disponibles.[/]");
     }
 }
